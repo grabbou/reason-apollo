@@ -1,3 +1,5 @@
+open Js.Result;
+
 module type InternalConfig = {
   let apolloClient: ApolloClient.generatedApolloClient;
 };
@@ -19,10 +21,8 @@ module MutationFactory = (InternalConfig: InternalConfig) => {
     | Loading
     | Loaded(Js.Json.t)
     | Failed(Js.Promise.error);
-  type action =
-    | Result(string)
-    | Error(Js.Promise.error);
-  let sendMutation = (~mutation, ~reduce) =>
+  type action = Js.Result.t(Js.Json.t, Js.Promise.error);
+  let sendMutation = (~mutation, ~send) =>
     Js.Promise.(
       resolve(
         InternalConfig.apolloClient##mutate({
@@ -30,13 +30,14 @@ module MutationFactory = (InternalConfig: InternalConfig) => {
           "variables": mutation##variables
         })
       )
-      |> then_(value => {
-           reduce(() => Result(value), ());
-           resolve();
+      |> then_(result => {
+           let typedResult = cast(result)##data;
+           send(Ok(typedResult));
+           resolve(Ok(typedResult));
          })
       |> catch(error => {
-           reduce(() => Error(error), ());
-           reject(error |> castPromiseError);
+           send(Error(error));
+           resolve(Error(error));
          })
     );
   let component = ReasonReact.reducerComponent("ReasonApollo");
@@ -45,14 +46,12 @@ module MutationFactory = (InternalConfig: InternalConfig) => {
     initialState: () => NotCalled,
     reducer: (action, _state) =>
       switch action {
-      | Result(result) =>
-        let typedResult = cast(result)##data;
-        ReasonReact.Update(Loaded(typedResult));
+      | Ok(typedResult) => ReasonReact.Update(Loaded(typedResult))
       | Error(error) => ReasonReact.Update(Failed(error))
       },
-    render: ({reduce, state}) => {
+    render: ({send, state}) => {
       let mutate = mutationFactory =>
-        sendMutation(~mutation=mutationFactory, ~reduce);
+        sendMutation(~mutation=mutationFactory, ~send);
       children(mutate, state);
     }
   };
