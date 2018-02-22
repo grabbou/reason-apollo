@@ -2,6 +2,8 @@ module type InternalConfig = {
   let apolloClient: ApolloClient.generatedApolloClient;
 };
 
+external castPromiseError : Js.Promise.error => exn = "%identity";
+
 module MutationFactory = (InternalConfig: InternalConfig) => {
   external cast :
     string =>
@@ -34,7 +36,7 @@ module MutationFactory = (InternalConfig: InternalConfig) => {
          })
       |> catch(error => {
            reduce(() => Error(error), ());
-           resolve();
+           reject(error |> castPromiseError);
          })
     );
   let component = ReasonReact.reducerComponent("ReasonApollo");
